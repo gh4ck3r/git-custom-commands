@@ -1,0 +1,90 @@
+#!/bin/bash
+
+function usage() {
+  cat <<USAGE
+  Usage) $(basename $0) list
+USAGE
+  exit 255
+}
+
+(($#)) || usage
+
+. ~/.local/bin/color.sh 2>&- ||
+  source <(curl -s https://gist.githubusercontent.com/gh4ck3r/1e47a384b5ea2bf537aa364c54ea6811/raw/install-color.sh)
+CURDIR=$(dirname $(readlink -e $0));
+. $CURDIR/jira.sh
+
+function get_project_id() {
+  local config=jira.project-id
+  local id=$(git config $config);
+  if [[ -z $id ]];then
+    read -p "Enter project ID : " id;
+    # TODO : validate id
+    git config $config $id;
+  fi
+  echo $id;
+}
+
+function get_board_name() {
+  local config=jira.board-name
+  local name=$(git config $config);
+  if [[ -z $name ]];then
+    read -p "Enter board name : " name;
+    # TODO : validate name
+    #git config $config $name
+  fi
+  echo $name;
+}
+
+function get_board_id() {
+  local config=jira.board-id
+  local board_id=$(git config $config);
+  if [[ -z $board_id ]];then
+    local project_id=$(get_project_id);
+    local board_name=$(get_board_name);
+    board_id=$(GET /rest/agile/1.0/board?projectKeyOrId=$project_id |
+      jq -r ".values[] | select(.name==\"$board_name\") | .id");
+    git config $config $board_id
+  fi
+  echo $board_id
+}
+
+function get_active_sprint_id() {
+  local config=jira.active-sprint-id
+  local active_sprint_id=$(git config $config);
+  if [[ -z $active_sprint_id ]];then
+    local board_id=$(get_board_id);
+    active_sprint_id=$(GET /rest/agile/1.0/board/$board_id/sprint |
+      jq -r ".values[] | select(.state == \"active\" and .originBoardId == $board_id) | .id")
+    git config $config $active_sprint_id;
+  fi
+  echo $active_sprint_id;
+}
+
+function git-works-list() {
+  local jira_issues=$(GET /rest/agile/1.0/sprint/$(get_active_sprint_id)/issue?jql='issuetype+IN+standardIssueTypes()')
+
+  function JQ() {
+    local filter;
+    read -rd '' filter;
+    jq -L$CURDIR -r "include \"jira\";$filter" <<< "$jira_issues"
+  }
+
+  echo " << My issues >>"
+  JQ <<FILTER
+.issues[] | assigned_to("$jira_id") | status_except("Done") | summary
+FILTER
+
+  echo ""
+  echo "<< Unassigned issues >>"
+  JQ <<FILTER
+.issues[] | assigned_to(null) | summary
+FILTER
+}
+
+if [[ $(type -t git-works-$1) != "function" ]];then
+  echo "Unknown sub command : $1"
+  exit 1
+fi
+
+git-works-$1

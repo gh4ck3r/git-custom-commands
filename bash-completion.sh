@@ -46,3 +46,10 @@ function _git_rebaseall()
 
   __gitcomp_nl "$(__git_heads)"
 }
+
+function _git_works()
+{
+  local subcmds=(list) # TODO : Fetch automatically
+  candidate=${subcmds[@]}
+  __gitcomp "${subcmds[*]}"
+}
