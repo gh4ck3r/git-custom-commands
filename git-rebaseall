@@ -1,0 +1,23 @@
+#!/bin/bash
+
+if [[ $# == 0 ]];then
+  base=master
+else
+  base=$1
+fi
+
+if ! git rev-parse --verify $base >/dev/null 2>&1 ;then
+  echo "'$base' is not valid branch name for rebase" >&2
+  exit 1
+fi
+
+current_branch=$(git rev-parse --abbrev-ref HEAD 2> /dev/null)
+
+for branch in $(git branch | grep -v "\<$base\>" | tr -d '*');do
+  echo -e "\033[92;1m<< Rebase $branch to $base >>\033[0m"
+  git rebase $base $branch || exit $?
+  echo ""
+done
+
+[[ $(git rev-parse --abbrev-ref HEAD 2> /dev/null) = $current_branch ]] ||
+  git checkout $current_branch > /dev/null 2>&1

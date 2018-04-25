@@ -1,0 +1,144 @@
+#!/bin/bash
+
+if ! git_dir=$(git rev-parse --git-dir 2>&-);then
+  echo "fatal: Not a git repository (or any parent up to mount point $(dirname $PWD))" >&2
+  exit 1;
+fi
+hooks_dir=$git_dir/hooks
+
+# Full hook list
+VALID_HOOKS=(
+  applypatch-msg
+  pre-applypatch
+  post-applypatch
+  pre-commit
+  prepare-commit-msg
+  commit-msg
+  post-commit
+  pre-rebase
+  post-checkout
+  post-merge
+  pre-receive
+  update
+  post-receive
+  post-update
+  pre-auto-gc
+  post-rewrite
+  pre-push
+)
+
+function usage()
+{
+  cat >&2 <<EOF
+Usage) git hooks [hook-name]...
+  Show or edit githooks.
+
+  List hooks in \$GIT_DIR/hooks, if [hook-name] is omitted. Otherwise, Edit
+  [hook-name] with git editor. Contents of *.sample file will be shown if
+  there's *.sample and no hook is set.
+
+  See man githooks(5) for more detail about available hooks for git.
+
+  Options
+    -h|--help)      Show this help message
+    -l|--listall)   List all possible hooks
+    -d|--delete)    Delete given hooks
+
+EOF
+}
+
+operation=list
+eval set -- "$(getopt --name "git hooks" -l "help,listall,delete" -o "h,l,d" -- $@)"
+while :; do
+  case "$1" in
+    -h|--help)
+      usage
+      operation=exit-0
+      [[ $SHLVL = 1 ]] && return || exit
+      ;;
+    -l|--listall)
+      operation=listall
+      ;;
+    -d|--delete)
+      operation=delete
+      ;;
+    --) shift;break;;
+    *)
+      if [[ -n "$1" ]]; then
+        echo "Unkonwn option : -$OPTARG" >&2
+        operation=exit-2
+      fi
+      ;;
+  esac
+  shift
+done
+
+[[ $operation == list && $# != 0 ]] && operation=edit
+
+case $operation in
+  list)
+    for hook in ${VALID_HOOKS[@]};do
+      if [[ -x $hooks_dir/$hook ]];then
+        echo -e "\033[91;1m$(basename $hook)\033[0m";
+      fi
+    done
+    ;;
+  listall)
+    for hook in ${VALID_HOOKS[@]};do
+      if [[ -x $hooks_dir/$hook ]];then
+        echo -e "\033[91;1m$(basename $hook)\033[0m";
+      elif [[ -a $hooks_dir/$hook.sample ]];then
+        echo -e "\033[1m$(basename $hook)\033[0m";
+      else
+        echo -e "\033[2m$(basename $hook)\033[0m";
+      fi
+    done
+    ;;
+  edit)
+    EDITOR=$(git config core.editor)
+    declare -a EDITOR_OPTION LISTED_HOOKS
+    while [[ $# -gt 0 ]];do
+      if ! [[ " ${LISTED_HOOKS[@]} " == *" $1 "* ]];then
+        LISTED_HOOKS[${#LISTED_HOOKS[@]}]=$1
+
+        if ! [[ " ${VALID_HOOKS[@]} " == *" $1 "* ]];then
+          echo "Unknown hook : $1" >&2;
+          [[ $SHLVL = 1 ]] && return 3 || exit 3
+        fi
+
+        TARGET_HOOK=$hooks_dir/$1
+        if [[ $EDITOR = vi* ]]; then
+          EDITOR_OPTION[${#EDITOR_OPTION[@]}]="+wincmd w"
+
+          if ! [[ -f $TARGET_HOOK ]] && [[ -f $TARGET_HOOK.sample ]];then
+            EDITOR_OPTION[${#EDITOR_OPTION[@]}]="+0r $TARGET_HOOK.sample | filetype detect"
+          fi
+        fi
+
+        EDITOR_OPTION[${#EDITOR_OPTION[@]}]="$TARGET_HOOK"
+      fi
+
+      shift
+    done
+
+    EDITOR_OPTION[0]="-O"
+    $EDITOR "${EDITOR_OPTION[@]}" &&
+      [[ -r $TARGET_HOOK && -w $TARGET_HOOK ]] &&
+      chmod a+x "$TARGET_HOOK"
+    ;;
+  delete)
+    for hook in $@;do
+      hook_file=$hooks_dir/$hook
+      if [[ -w $hook_file && -x $hook_file ]];then
+        echo -e "\033[91;1m$hook\033[0m is deleted"
+        rm -f $hook_file
+      fi
+    done
+    ;;
+  exit-*)
+    [[ $SHLVL = 1 ]] && return ${operation#exit-} || exit ${operation#exit-};;
+
+  *)
+    [[ $SHLVL = 1 ]] && return 1 || exit 1;;
+esac
+

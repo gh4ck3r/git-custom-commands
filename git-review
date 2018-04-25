@@ -1,0 +1,88 @@
+#!/bin/bash
+
+if ! git_dir=$(git rev-parse --git-dir 2>&-);then
+  echo "fatal: Not a git repository (or any parent up to mount point $(dirname $PWD))" >&2
+  exit 1;
+fi
+
+cmd=$(git config review.cmd)
+if [[ -z $cmd ]];then
+  echo 'Set review command with "git config review.cmd <cmd>" first' >&2;
+  exit 2
+elif ! type $cmd 2>&1 >/dev/null;then
+  echo "Review command $cmd is not executable" >&2;
+  exit 3
+fi
+
+base_branch=$(git config review.base)
+base_branch=${base_branch:=master}
+
+if [[ $# = 0 ]];then
+  # find base branch if no parameter given
+  diff_param=$base_branch
+  if ! git rev-parse --verify $diff_param >/dev/null 2>&1; then
+    cat >&2 <<EOF
+  [ERROR] Base branch for review is not exist -> $diff_param
+    set with following command
+    $ git config review.base <base-branch-name>
+EOF
+    exit 4
+fi
+else
+  diff_param=$@
+fi
+
+branch=${branch:-$(git rev-parse --abbrev-ref HEAD 2> /dev/null)}
+
+function config_review_id() {
+  git config branch.$branch.review-id $1
+}
+
+case $cmd in
+  ccollab)
+    # following contains meta information of connection with server
+    # ~/.smartbear/com.smartbear.ccollab.client.txt
+    # loginticketid field will be empty when logged out.
+
+    review_id=$(config_review_id)
+
+    #commits=( $(git rev-list --reverse ^${base_branch:=master} HEAD) )
+
+    $cmd addgitdiffs ${review_id:-new} $diff_param
+
+    if [[ -z $review_id ]];then
+      # set title and custom fields
+      declare -a custom_fields
+      for field in $(git config --name-only --get-regexp ccollab.custom-fields)
+      do
+        custom_fields[${#custom_fields[@]}]="'$(git config $field)' "
+      done
+
+      # Multiline is not supported replace newline with '\\n'
+      #description="$(git log ^trunk HEAD --oneline --reverse | \
+      #  cut -f2- -d' ' | \
+      #  tr '\n' '\t' | \
+      #  sed 's/\t/\\n/g')"
+      #custom_fields[${#custom_fields[@]}]="'Review Description=$description' "
+
+      title=$(git log ^trunk HEAD --oneline --reverse | head -n1 | cut -d' ' -f2-)
+      eval $cmd admin review edit last \
+        --title \"${title//\"/\\\"}\" \
+        --custom-field ${custom_fields[@]}
+
+      # set participants
+      $cmd admin review set-participants last --participant \
+        $(git config --get-regexp ccollab.participants | \
+          sed 's/^.*\.\(\w\+\)\s\(\w\+\)/\2=\1/')
+
+      # Store review id to git config
+      review_id=$($cmd admin review-xml last \
+        --xpath 'string(//reviews/review/@reviewId)')
+      [[ -n $review_id ]] && config_review_id $review_id
+    fi
+    ;;
+  *)
+    echo "Unkonwn review command : $cmd" >&2
+    ;;
+esac
+
