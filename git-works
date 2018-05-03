@@ -63,24 +63,46 @@ function get_active_sprint_id() {
   echo $active_sprint_id;
 }
 
+function get_local_working_branches() {
+  local prefix=$(git config jira.project-id)
+  git branch --list "$prefix-*" |
+    sed "s/^\s*\($prefix-[0-9]\+\).*$/\1/g"
+}
+
 function git-works-list() {
   local jira_issues=$(GET /rest/agile/1.0/sprint/$(get_active_sprint_id)/issue?jql='issuetype+IN+standardIssueTypes()')
 
   function JQ() {
     local filter;
     read -rd '' filter;
-    jq -L$CURDIR -r "include \"jira\";$filter" <<< "$jira_issues"
+    jq -L$CURDIR -r "include \"jira\";$filter" "$@" <<< "$jira_issues"
+  }
+
+  highlight ()
+  {
+      local pattern="^";
+      while [[ $# -gt 1 ]]; do
+          pattern+="|$1";
+          shift;
+      done;
+      if [[ -r $1 ]]; then
+          local filename="$1";
+      else
+          pattern+="|$1";
+      fi;
+      grep --color=auto -E "$pattern" $filename
   }
 
   echo " << My issues >>"
-  JQ <<FILTER
-.issues[] | assigned_to("$jira_id") | status_except("Done") | summary
+  local local_branches=$(get_local_working_branches)
+  JQ --arg branches "$local_branches" <<FILTER | highlight $local_branches
+digest_issues | assigned_to("$jira_id") | status_except("Done") | summary
 FILTER
 
   echo ""
-  echo "<< Unassigned issues >>"
+  echo " << Unassigned issues >>"
   JQ <<FILTER
-.issues[] | assigned_to(null) | summary
+digest_issues | assigned_to(null) | summary
 FILTER
 }
 
