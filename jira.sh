@@ -8,7 +8,10 @@ if ! [[ "$(type -t secret-tool)" == "file" ]];then
 fi
 
 ROOT_DIR=${ROOT_DIR:-$(dirname "${BASH_SOURCE[0]}")}
-type -t syslog >/dev/null 2>&1 || . $ROOT_DIR/log.sh
+if ! type -t syslog >/dev/null 2>&1;then
+  SYSLOG_TAG=${SYSLOG_TAG:-jira}
+  . $ROOT_DIR/log.sh
+fi
 
 jira_url=${jira_url:-$(git config jira.url)}
 if [[ -z $jira_url ]];then

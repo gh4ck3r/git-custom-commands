@@ -1,5 +1,3 @@
-
-
 def assigned_to(id): id as $id |
   select(.fields.assignee.key == $id);
 
