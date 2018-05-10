@@ -58,14 +58,11 @@ case $cmd in
         custom_fields[${#custom_fields[@]}]="'$(git config $field)' "
       done
 
-      # Multiline is not supported replace newline with '\\n'
-      #description="$(git log ^trunk HEAD --oneline --reverse | \
-      #  cut -f2- -d' ' | \
-      #  tr '\n' '\t' | \
-      #  sed 's/\t/\\n/g')"
-      #custom_fields[${#custom_fields[@]}]="'Review Description=$description' "
-
-      title=$(git log ^trunk HEAD --oneline --reverse | head -n1 | cut -d' ' -f2-)
+      title=$(git log ^trunk HEAD --oneline --reverse -n1 --format=%s)
+      description=$(git log ^trunk HEAD --oneline --reverse -n1 --format=%b)
+      if [[ -n $description ]]; then
+        custom_fields[${#custom_fields[@]}]="'Review Description=${description//$'\n'/\\n}' "
+      fi
       eval $cmd admin review edit last \
         --title \"${title//\"/\\\"}\" \
         --custom-field ${custom_fields[@]}
