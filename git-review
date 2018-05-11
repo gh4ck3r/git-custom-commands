@@ -61,11 +61,15 @@ case $cmd in
       title=$(git log ^trunk HEAD --oneline --reverse -n1 --format=%s)
       description=$(git log ^trunk HEAD --oneline --reverse -n1 --format=%b)
       if [[ -n $description ]]; then
-        custom_fields[${#custom_fields[@]}]="'Review Description=${description//$'\n'/\\n}' "
+        description="${description//$'\n'/\\n}"
+        description=${description//\"/\\\"}
+        # use '"'"' to escape single quote inside single quote
+        description=${description//\'/\'\"\'\"\'}
+        custom_fields[${#custom_fields[@]}]="'Review Description=$description' "
       fi
       eval $cmd admin review edit last \
         --title \"${title//\"/\\\"}\" \
-        --custom-field ${custom_fields[@]}
+        --custom-field "${custom_fields[@]}"
 
       # set participants
       $cmd admin review set-participants last --participant \
