@@ -5,6 +5,8 @@ if ! git_dir=$(git rev-parse --git-dir 2>&-);then
   exit 1;
 fi
 
+SYSLOG_TAG=$(basename $BASH_SOURCE)
+
 cmd=$(git config review.cmd)
 if [[ -z $cmd ]];then
   echo 'Set review command with "git config review.cmd <cmd>" first' >&2;
@@ -13,6 +15,7 @@ elif ! type $cmd 2>&1 >/dev/null;then
   echo "Review command $cmd is not executable" >&2;
   exit 3
 fi
+
 
 base_branch=$(git config review.base)
 base_branch=${base_branch:=master}
@@ -36,6 +39,47 @@ branch=${branch:-$(git rev-parse --abbrev-ref HEAD 2> /dev/null)}
 
 function config_review_id() {
   git config branch.$branch.review-id $1
+}
+
+CURDIR=$(dirname $(readlink -e $0));
+. $CURDIR/jira.sh
+
+function update-jira() {
+  local ccollab_url=$($cmd set | grep '^url = ');
+  ccollab_url="${ccollab_url//url = /}/ui#review:id=$review_id";
+
+  if [[ -z $ccollab_url ]];then
+    echo "Failed to get code collaborator URL" >&2
+    return 2; # ENOENT
+  fi
+
+  local issue_id=$(jira-issue $branch | jq -r '.fields.subtasks[] | select(.fields.summary == "Code Review") | .key');
+
+  if [[ -z $issue_id ]];then
+    echo "There's no subtask for code review" >&2
+    return;
+  fi
+  echo "Updating $issue_id for review"
+
+  local reviewer=$(git config jira.reviewer-id)
+  if [[ -z $reviewer ]];then
+    echo 'No jira reviewer info in "git config jira.reviewer-id"'
+    read -p "Enter reviewer ID on Jira : " reviewer
+    # TODO : validate reviewer id
+    git config jira.reviewer-id $reviewer
+  fi
+
+  echo "Assign $reviewer to $issue_id"
+  jira-assign $reviewer $issue_id
+
+  local review_link_title=$(jira-get-remotelinks $issue_id | jq ".[].object | select(.url == \"$ccollab_url\") | .title")
+  if [[ -n $review_link_title ]];then
+    echo "Review is already linked as name $review_link_title";
+    return 0;
+  fi
+
+  echo "Add $ccollab_url to $issue_id as \"Code Review\""
+  jira-add-remotelink $issue_id "Code Review" $ccollab_url
 }
 
 case $cmd in
@@ -80,6 +124,8 @@ case $cmd in
       review_id=$($cmd admin review-xml last \
         --xpath 'string(//reviews/review/@reviewId)')
       [[ -n $review_id ]] && config_review_id $review_id
+
+      update-jira;
     fi
     ;;
   *)
