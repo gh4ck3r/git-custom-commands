@@ -41,12 +41,12 @@ unset jira_password
 
 function CURL() {
   sysdebug <<COMMAND
-curl -su $jira_credential -H 'Content-Type: application/json' $@;
+curl -su $jira_credential -H 'Content-Type: application/json' "$@";
 COMMAND
   if [[ $- = *i* ]] && [[ -t 1 ]];then
-    curl -su $jira_credential -H 'Content-Type: application/json' $@ | jq .;
+    curl -su $jira_credential -H 'Content-Type: application/json' "$@" | jq .;
   else
-    curl -su $jira_credential -H 'Content-Type: application/json' $@;
+    curl -su $jira_credential -H 'Content-Type: application/json' "$@";
   fi
 }
 
@@ -75,6 +75,21 @@ function jira-issue() {
   done
 }
 
+function jira-get-remotelinks() {
+  [[ $# == 0 ]] && return;
+
+  local temp_prefix=$(mktemp -u)
+  GET /rest/api/2/issue/{$(IFS=,;echo "$*")}/remotelink -o "$temp_prefix-#1.json"
+
+  local issue;
+  for issue in $@;do
+    issue=$temp_prefix-$issue.json;
+    cat $issue && rm -f $issue >/dev/null 2>&1
+  done
+}
+
+# $1 : jira id
+# $2~@ : issue_id
 # https://docs.atlassian.com/software/jira/docs/api/REST/7.6.1/?_ga=2.246577092.1959139811.1523341361-766559685.1496031775#api/2/issue-assign
 function jira-assign()
 {
@@ -126,3 +141,23 @@ DATA
   done
 }
 
+function jira-add-remotelink() {
+  if [[ $# < 3 ]];then
+    syserr "[jira-remotelink] Insufficient parameter"
+    return 22;  # EINVAL
+  fi
+
+  local data=$(jq -c . <<DATA
+{
+  "object": {
+    "title": "$2",
+    "url": "$3"
+  }
+}
+DATA
+);
+  local http_code=$(POST /rest/api/2/issue/$1/remotelink -d "$data" -w "%{http_code}")
+  [[ $http_code == 200 ]] && return;
+
+  syswarn "Failed to post remote link to \"$1\" [http_code : $http_code]"
+}
