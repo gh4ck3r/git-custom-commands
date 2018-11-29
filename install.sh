@@ -25,7 +25,7 @@ MSG
   local cmd_cnt=${#git_custom_cmds[@]}
   for ((i=0;i<$cmd_cnt;++i));do
     local cmd=${git_custom_cmds[$i]}
-    [[ $(readlink -e $git_exec_path/$(basename $cmd)) = $(readlink -e $cmd) ]] &&
+    [[ $(readlink -e "$git_exec_path/$(basename $cmd)") = $(readlink -e $cmd) ]] &&
       unset git_custom_cmds[$i];
   done
   ((${#git_custom_cmds[@]})) || return 0;
