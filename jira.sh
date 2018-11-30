@@ -2,7 +2,7 @@
 # Avoid invoked as subshell. This SHOULD BE sourced
 [[ ${BASH_SOURCE[0]} == $0 ]] && exit 1
 
-if ! [[ "$(type -t secret-tool)" == "file" ]];then
+if [[ $(lsb_release -i 2>&-) = *Ubuntu ]] && ! [[ "$(type -t secret-tool)" == "file" ]];then
   echo "It can be possible to fetch password from stored credential(gnome-keyring)" >&2
   sudo apt install libsecret-tools
 fi
@@ -21,9 +21,24 @@ ERROR
 return 1
 fi
 
+# Following regex is based on https://tools.ietf.org/html/rfc3986#appendix-B with
+# additional sub-expressions to split authority into userinfo, host and port
+#
+readonly URI_REGEX='^(([^:/?#]+):)?(//((([^:/?#]+)@)?([^:/?#]+)(:([0-9]+))?))?(/([^?#]*))(\?([^#]*))?(#(.*))?'
+#                    ↑↑            ↑  ↑↑↑            ↑         ↑ ↑            ↑ ↑        ↑  ↑        ↑ ↑
+#                    |2 scheme     |  ||6 userinfo   7 host    | 9 port       | 11 rpath |  13 query | 15 fragment
+#                    1 scheme:     |  |5 userinfo@             8 :…           10 path    12 ?…       14 #…
+#                                  |  4 authority
+#                                  3 //…
+if [[ $jira_url =~ $URI_REGEX ]] && [[ -n ${BASH_REMATCH[9]} ]] ;then
+jira_url_for_credential=${jira_url%:*}/
+else
+jira_url_for_credential=$jira_url/
+fi
+
 function fetch_username()
 {
-  secret-tool search --unlock signon_realm $jira_url/ 2>&1 | grep username_value
+  secret-tool search --unlock signon_realm $jira_url_for_credential/ 2>&1 | grep username_value
 }
 
 if [[ "$(type -t secret-tool)" == "file" ]];then
@@ -33,11 +48,21 @@ if [[ "$(type -t secret-tool)" == "file" ]];then
   fi
   IFS=' =' read username_value jira_id <<<$username_value
   unset username_value
-  jira_password=$(secret-tool lookup signon_realm $jira_url/ username_value $jira_id)
+  jira_password=$(secret-tool lookup signon_realm $jira_url_for_credential username_value $jira_id)
+elif [[ $(uname -o) = Msys ]];then
+  echo "jira_url_for_credential: $jira_url_for_credential"
+  read jira_id jira_password <<<$(powershell -Command - 2>&- <<PS1
+[void] [Windows.Security.Credentials.PasswordVault,Windows.Security.Credentials,ContentType=WindowsRuntime]
+\$cred = (New-Object Windows.Security.Credentials.PasswordVault).FindAllByResource("$jira_url_for_credential") | select -First 1
+\$cred.retrievePassword()
+"{0} {1}" -f [string]\$cred.userName, [string]\$cred.password
+PS1
+)
 fi
 jira_password=${jira_password:+:${jira_password}}
 jira_credential=$jira_id$jira_password
 unset jira_password
+[[ -z $jira_credential ]] && syswarn "No credential found for $jira_url (try to login with Chrome on Linux or Edge on Windows)"
 
 function CURL() {
   sysdebug <<COMMAND

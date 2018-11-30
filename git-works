@@ -13,14 +13,14 @@ SYSLOG_TAG=$(basename $BASH_SOURCE)
 
 . ~/.local/bin/color.sh 2>&- ||
   source <(curl -s https://gist.githubusercontent.com/gh4ck3r/1e47a384b5ea2bf537aa364c54ea6811/raw/install-color.sh)
-CURDIR=$(dirname $(readlink -e $0));
+CURDIR=$(dirname $(readlink -e "$0"));
 . $CURDIR/jira.sh
 
 function get_project_id() {
   local config=jira.project-id
   local id=$(git config $config);
   if [[ -z $id ]];then
-    read -p "Enter project ID : " id;
+    read -p "Enter project ID (probably prefix of issues): " id;
     # TODO : validate id
     git config $config $id;
   fi

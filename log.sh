@@ -35,3 +35,6 @@ function syswarn() {
   echo -e "\e[93;1m[W] $msg\e[0m" >&2
 }
 
+if [[ $(uname -o) = Msys ]];then
+logger() { :; }
+fi
