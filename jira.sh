@@ -50,7 +50,7 @@ if [[ "$(type -t secret-tool)" == "file" ]];then
   unset username_value
   jira_password=$(secret-tool lookup signon_realm $jira_url_for_credential username_value $jira_id)
 elif [[ $(uname -o) = Msys ]];then
-  echo "jira_url_for_credential: $jira_url_for_credential"
+  sysdebug "jira_url_for_credential: $jira_url_for_credential"
   read jira_id jira_password <<<$(powershell -Command - 2>&- <<PS1
 [void] [Windows.Security.Credentials.PasswordVault,Windows.Security.Credentials,ContentType=WindowsRuntime]
 \$cred = (New-Object Windows.Security.Credentials.PasswordVault).FindAllByResource("$jira_url_for_credential") | select -First 1
