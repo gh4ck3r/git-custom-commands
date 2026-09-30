@@ -1,0 +1,21 @@
+#!/bin/bash
+
+WORKS_PREFIX=$(git config works.keyword)
+if [[ -z "$WORKS_PREFIX" ]]; then
+  echo "Error: set 'git config works.keyword' first"
+  exit 1
+fi
+WORKS_URL=$(git config works.url)
+WORKS_PAT=$(git config works.pat)
+
+git branch --format='%(refname:short)' --list ${WORKS_PREFIX}-* |
+  while read -r branch; do
+    desc=$(git config branch."$branch".description)
+    [[ -z ${desc} ]] && desc=${WORKS_PAT:+$(\
+      curl -sH "Authorization: Bearer ${WORKS_PAT}" \
+          -H 'Content-Type: application/json' \
+          "${WORKS_URL}/rest/api/2/issue/$branch?fields=summary" |
+          jq -r .fields.summary)}
+    echo -e "${WORKS_URL+\e]8;;${WORKS_URL}/browse/$branch\e\\}$branch${WORKS_URL+\e]8;;\e\\} ${desc}"
+  done |
+  column -tl2
